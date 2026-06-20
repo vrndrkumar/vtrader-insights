@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   VTRADER DESIGN SYSTEM
+   Two themes: dark (default) and light, toggled via data-theme
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Dark theme (default) ── */
+:root, [data-theme="dark"] {
+  --bg:          #080d14;
+  --bg-2:        #0e1623;
+  --surface:     #111e2e;
+  --surface-2:   #172437;
+  --surface-3:   #1e2f45;
+  --line:        #243347;
+  --line-2:      #2e4060;
+
+  --text-1:      #eef2f8;
+  --text-2:      #8ea6c4;
+  --text-3:      #4d6480;
+
+  --gold:        #f0b429;
+  --gold-2:      #fcd97a;
+  --gold-dim:    rgba(240,180,41,0.12);
+  --gold-glow:   rgba(240,180,41,0.25);
+
+  --teal:        #0fd9a0;
+  --teal-dim:    rgba(15,217,160,0.1);
+  --teal-mid:    #0a8060;
+
+  --rose:        #f05270;
+  --rose-dim:    rgba(240,82,112,0.1);
+
+  --blue:        #4e8ef7;
+  --blue-dim:    rgba(78,142,247,0.1);
+
+  --amber:       #f59e0b;
+  --amber-dim:   rgba(245,158,11,0.1);
+
+  --violet:      #a78bfa;
+  --violet-dim:  rgba(167,139,250,0.1);
+
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.6);
+  --shadow-gold: 0 0 24px rgba(240,180,41,0.15);
+}
+
+/* ── Light theme ── */
+[data-theme="light"] {
+  --bg:          #f0f4f9;
+  --bg-2:        #e6ecf4;
+  --surface:     #ffffff;
+  --surface-2:   #f7f9fc;
+  --surface-3:   #eef2f7;
+  --line:        #d1dbe8;
+  --line-2:      #b8c8da;
+
+  --text-1:      #0f1d2e;
+  --text-2:      #3d5470;
+  --text-3:      #7a96b4;
+
+  --gold:        #c88a00;
+  --gold-2:      #e6a800;
+  --gold-dim:    rgba(200,138,0,0.08);
+  --gold-glow:   rgba(200,138,0,0.2);
+
+  --teal:        #0a9970;
+  --teal-dim:    rgba(10,153,112,0.08);
+  --teal-mid:    #076e50;
+
+  --rose:        #d4364f;
+  --rose-dim:    rgba(212,54,79,0.08);
+
+  --blue:        #2563eb;
+  --blue-dim:    rgba(37,99,235,0.08);
+
+  --amber:       #d97706;
+  --amber-dim:   rgba(217,119,6,0.08);
+
+  --violet:      #7c3aed;
+  --violet-dim:  rgba(124,58,237,0.08);
+
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.1);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.12);
+  --shadow-gold: 0 0 24px rgba(200,138,0,0.12);
+}
+
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; border-color: var(--line); }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+::selection { background: var(--gold); color: var(--bg); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 4px; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+
+/* ── Typography ── */
+.font-display { font-family: "Space Grotesk", "Inter", sans-serif; }
+.font-mono    { font-family: "IBM Plex Mono", monospace; }
+
+/* ── Utility classes (used in JSX) ── */
+.bg-surface   { background: var(--surface); }
+.bg-surface-2 { background: var(--surface-2); }
+.bg-surface-3 { background: var(--surface-3); }
+.bg-bg        { background: var(--bg); }
+.bg-bg-2      { background: var(--bg-2); }
+
+.text-1  { color: var(--text-1); }
+.text-2  { color: var(--text-2); }
+.text-3  { color: var(--text-3); }
+.text-gold   { color: var(--gold); }
+.text-teal   { color: var(--teal); }
+.text-rose   { color: var(--rose); }
+.text-blue   { color: var(--blue); }
+.text-amber  { color: var(--amber); }
+.text-violet { color: var(--violet); }
+
+.border-line  { border-color: var(--line); }
+.border-line2 { border-color: var(--line-2); }
+
+/* ── Gradient helpers ── */
+.gradient-gold {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-2) 60%, var(--gold) 100%);
+}
+.gradient-header {
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+}
+.gradient-teal {
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-mid) 100%);
+}
+
+/* ── Glow effects ── */
+.glow-gold  { box-shadow: var(--shadow-gold); }
+.glow-teal  { box-shadow: 0 0 20px rgba(15,217,160,0.2); }
+
+/* ── Card hover ── */
+.card-hover {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.card-hover:hover {
+  border-color: var(--gold-glow) !important;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--gold-dim);
+  transform: translateY(-1px);
+}
+
+/* ── Badge colors ── */
+.badge-buy      { background: var(--teal-dim);   color: var(--teal);   border-color: rgba(15,217,160,0.3); }
+.badge-watchlist{ background: var(--amber-dim);  color: var(--amber);  border-color: rgba(245,158,11,0.3); }
+.badge-avoid    { background: var(--rose-dim);   color: var(--rose);   border-color: rgba(240,82,112,0.3); }
+.badge-neutral  { background: var(--surface-2);  color: var(--text-2); border-color: var(--line); }
+
+/* ── Print styles ── */
+@media print {
+  body { background: white !important; color: black !important; }
+  .no-print { display: none !important; }
+}

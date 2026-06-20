@@ -1,0 +1,26 @@
+[Unit]
+Description=VTrader Stock Intelligence — FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/vtrader/insights/backend
+
+# Load production env file
+EnvironmentFile=/home/vtrader/insights/backend/.env.production
+
+ExecStart=/home/vtrader/insights/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --no-access-log
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vtrader-api
+
+[Install]
+WantedBy=multi-user.target

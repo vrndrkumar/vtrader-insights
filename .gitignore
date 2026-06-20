@@ -1,0 +1,27 @@
+# React
+node_modules/
+build/
+dist/
+.next/
+
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
