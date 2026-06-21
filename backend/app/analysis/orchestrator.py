@@ -192,32 +192,70 @@ def analyze_stock(db: Session, stock: StockMstr) -> StockAnalysisReport:
     technical       = technical_module.compute_technical(history, quote)
     suggested_setup = technical_module.suggest_trade_setup(technical)
 
-    # Step 3: qualitative research (Claude — may be unavailable)
-    llm_result = llm_engine.analyze_stock_with_llm(
-        symbol_name     = stock.symbol_name,
-        symbol_code     = stock.symbol_code or "",
-        exchange        = stock.exchange or "",
-        technical       = technical,
-        suggested_setup = suggested_setup,
-        sector          = getattr(stock, "sector",   None) or "",
-        industry        = getattr(stock, "industry",  None) or "",
-        description     = getattr(stock, "description", None) or "",
+    stock_sector   = getattr(stock, "sector", None) or ""
+    stock_industry = getattr(stock, "industry", None) or ""
+    stock_desc     = getattr(stock, "description", None) or ""
+    sector_idx_sym = getattr(stock, "sector_index_symbol", None)
+
+    # Step 3: Fundamental / Sector / Momentum — via pluggable source
+    # (ANALYSIS_SOURCE in .env controls which engine actually runs:
+    #  yfinance = free structured ratios, anthropic = Claude+web search,
+    #  hybrid = yfinance numbers + Claude narrative layered on top)
+    from .sources import get_analysis_sources
+    fund_source, sector_source, momentum_source = get_analysis_sources()
+
+    try:
+        fundamental = fund_source.get_fundamentals(
+            symbol_code=stock.symbol_code or "", exchange=stock.exchange or "",
+            sector=stock_sector,
+            symbol_name=stock.symbol_name, technical=technical,
+            suggested_setup=suggested_setup, industry=stock_industry, description=stock_desc,
+        )
+    except TypeError:
+        # yfinance source doesn't accept the extra anthropic-only kwargs
+        fundamental = fund_source.get_fundamentals(
+            symbol_code=stock.symbol_code or "", exchange=stock.exchange or "", sector=stock_sector,
+        )
+
+    try:
+        sector = sector_source.get_sector_analysis(
+            sector=stock_sector, sector_index_symbol=sector_idx_sym,
+            symbol_code=stock.symbol_code or "",
+        )
+    except TypeError:
+        sector = sector_source.get_sector_analysis(sector=stock_sector, sector_index_symbol=sector_idx_sym)
+
+    momentum = momentum_source.get_momentum(
+        symbol_code=stock.symbol_code or "", price_history=history, sector_index_symbol=sector_idx_sym,
     )
 
-    fundamental  = llm_result.get("fundamental", {})
-    sector       = llm_result.get("sector", {})
-    momentum     = llm_result.get("momentum", {})
-    swing        = llm_result.get("swing_view", {})
-    long_term    = llm_result.get("long_term_view", {})
+    # Step 3b: Narrative layer (why_recommended, risk_factors, long_term thesis)
+    # Always attempt Claude for narrative if API key configured — independent
+    # of which source produced the numeric scores above. This is the "hybrid"
+    # behaviour: free accurate numbers + optional AI-written explanation.
+    llm_result = {}
+    try:
+        llm_result = llm_engine.analyze_stock_with_llm(
+            symbol_name=stock.symbol_name, symbol_code=stock.symbol_code or "",
+            exchange=stock.exchange or "", technical=technical, suggested_setup=suggested_setup,
+            sector=stock_sector, industry=stock_industry, description=stock_desc,
+        )
+    except Exception:
+        llm_result = {}
+
+    swing      = llm_result.get("swing_view", {})
+    long_term  = llm_result.get("long_term_view", {})
     risk_factors_raw = llm_result.get("risk_factors", [])
+
     # Filter out generic fallback messages
     risk_factors = [
         r for r in risk_factors_raw
         if "Qualitative analysis unavailable" not in str(r)
         and "treat scores as technical" not in str(r)
     ]
-    # If no real risks from LLM, build from technicals
+    # If no real risks from LLM, build from technicals + fundamental red flags
     if not risk_factors:
+        risk_factors = list(fundamental.get("red_flags", []))
         _rsi   = technical.get("rsi14")
         _trend = technical.get("trend", "")
         _pchi  = technical.get("pct_from_52w_high")
@@ -234,19 +272,27 @@ def analyze_stock(db: Session, stock: StockMstr) -> StockAnalysisReport:
         if "Choppy" in _str or "Extended" in _str:
             risk_factors.append(f"Chart structure is '{_str}' — increased risk of false signals or whipsaws.")
         if not risk_factors:
-            risk_factors.append("No Anthropic API key configured — fundamental and sector risks not assessed. Treat this as a technical-only signal.")
+            risk_factors.append("Limited data available for this stock at this time.")
 
-    # Step 4: scoring
+    # Step 4: scoring — DUAL WEIGHT PROFILES
+    # Swing (3-6M): Technical + Sector dominate, Fundamental is a red-flag gate
+    # Long-Term (1-3Y): Fundamental dominates, Technical is just entry timing
     fundamental_score = float(fundamental.get("score", 50) or 50)
     technical_score   = float(technical.get("technical_score", 50) or 50)
     sector_score      = float(sector.get("sector_strength_score", 50) or 50)
     momentum_score    = float(momentum.get("momentum_score", 50) or 50)
 
-    overall    = scoring.weighted_final_score(fundamental_score, technical_score, sector_score, momentum_score)
-    red_flags  = scoring.has_fundamental_red_flags(fundamental)
-    verdict    = scoring.verdict_for_score(overall, red_flags, suggested_setup.get("risk_reward_ratio"))
+    overall    = scoring.weighted_final_score(fundamental_score, technical_score, sector_score, momentum_score, profile="swing")
+    red_flags  = scoring.has_fundamental_red_flags(fundamental) or bool(fundamental.get("red_flags"))
+    verdict    = scoring.swing_verdict_for_score(overall, red_flags, suggested_setup.get("risk_reward_ratio"), fundamental_score)
     confidence = scoring.confidence_for(overall, verdict)
     probability = scoring.probability_3_6m(overall, verdict)
+
+    # Long-term score uses the SAME underlying numbers, different weights
+    long_term_score   = scoring.weighted_final_score(fundamental_score, technical_score, sector_score, momentum_score, profile="long_term")
+    long_term_verdict = scoring.long_term_verdict_for_score(long_term_score, red_flags)
+    long_term.setdefault("structural_score", long_term_score)
+    long_term.setdefault("suitable_for_long_term", long_term_verdict in ("Strong Buy", "Buy"))
 
     # Step 5: build why/why_not — use LLM result if available, else pattern engine
     llm_why     = swing.get("why_recommended", [])

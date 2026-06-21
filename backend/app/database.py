@@ -50,6 +50,7 @@ class StockMstr(Base):
     industry    = Column(String(100), nullable=True)
     description = Column(Text, nullable=True)
     category    = Column(String(10), nullable=True)   # EQUITY | ETF | MF
+    sector_index_symbol = Column(String(20), nullable=True)
 
 
 # ── New tables owned by this app ─────────────────────────────────────

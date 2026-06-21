@@ -9,7 +9,7 @@ file only, which should NEVER be committed to source control.
 import os
 from functools import lru_cache
 from typing import List
-from urllib.parse import quote_plus 
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,6 +28,8 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_uri(self) -> str:
+        # URL-encode password — handles special characters like @ # ! etc.
+        # that would otherwise break the connection string parser.
         password = quote_plus(self.db_password)
         return (
             f"mysql+pymysql://{self.db_user}:{password}"
@@ -55,6 +57,9 @@ class Settings(BaseSettings):
     #   yfinance -> Yahoo Finance fallback (symbol.NS / symbol.BO)
     # ---------------------------------------------------------------
     market_data_provider: str = "mock"
+
+    # Fundamental/Sector/Momentum analysis engine: yfinance | anthropic | hybrid
+    analysis_source: str = "yfinance"
 
     fyers_app_id: str = ""
     fyers_access_token: str = ""
