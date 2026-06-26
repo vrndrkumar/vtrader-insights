@@ -49,6 +49,7 @@ class SectorSource(ABC):
         self,
         sector: Optional[str],
         sector_index_symbol: Optional[str],
+        db=None,
     ) -> Dict[str, Any]:
         """
         Must return:
@@ -61,6 +62,11 @@ class SectorSource(ABC):
             "risks": list[str],
             "raw_metrics": dict,
         }
+
+        db: optional SQLAlchemy session, used by implementations that
+        support daily caching (e.g. YFinanceSectorSource) to avoid
+        recomputing the same sector technical score for every stock.
+        Implementations that don't need caching can ignore it.
         """
         ...
 

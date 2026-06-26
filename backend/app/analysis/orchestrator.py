@@ -220,10 +220,10 @@ def analyze_stock(db: Session, stock: StockMstr) -> StockAnalysisReport:
     try:
         sector = sector_source.get_sector_analysis(
             sector=stock_sector, sector_index_symbol=sector_idx_sym,
-            symbol_code=stock.symbol_code or "",
+            symbol_code=stock.symbol_code or "", db=db,
         )
     except TypeError:
-        sector = sector_source.get_sector_analysis(sector=stock_sector, sector_index_symbol=sector_idx_sym)
+        sector = sector_source.get_sector_analysis(sector=stock_sector, sector_index_symbol=sector_idx_sym, db=db)
 
     momentum = momentum_source.get_momentum(
         symbol_code=stock.symbol_code or "", price_history=history, sector_index_symbol=sector_idx_sym,

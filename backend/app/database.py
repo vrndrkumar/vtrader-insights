@@ -54,6 +54,34 @@ class StockMstr(Base):
 
 
 # ── New tables owned by this app ─────────────────────────────────────
+class SectorScoreCache(Base):
+    """
+    Stores the computed sector technical score ONCE PER DAY per
+    sector_index_symbol, so it doesn't get recomputed on every single
+    stock analysis. A sector index's RSI/MACD/EMA only meaningfully
+    changes once a day (after market close) -- recalculating it for
+    every one of hundreds of stocks in the same sector during a batch
+    run was pure waste, and was part of what triggered the Yahoo
+    Finance rate-limiting issues.
+
+    Keyed by sector_index_symbol (not sector name) since multiple
+    sector labels can share a fallback index (^CRSLDX).
+    """
+    __tablename__ = "sector_score_cache"
+
+    id                   = Column(BigInteger, primary_key=True, autoincrement=True)
+    sector_index_symbol  = Column(String(20), unique=True, index=True, nullable=False)
+
+    sector_strength_score = Column(Float)
+    sector_trend          = Column(String(60))
+    sector_outlook         = Column(Text)
+    growth_drivers         = Column(JSON)
+    risks                  = Column(JSON)
+    raw_metrics             = Column(JSON)
+
+    computed_at          = Column(TIMESTAMP, server_default=func.now(), index=True)
+
+
 class StockAnalysisReport(Base):
     __tablename__ = "stock_analysis_reports"
 
@@ -143,6 +171,7 @@ def init_db() -> None:
             StockAnalysisReport.__table__,
             MarketOverview.__table__,
             AnalysisJob.__table__,
+            SectorScoreCache.__table__,
         ],
     )
 

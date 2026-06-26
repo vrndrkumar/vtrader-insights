@@ -99,6 +99,95 @@ def get_dashboard(top_n: int = 6, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/sector-summary")
+def get_sector_summary(db: Session = Depends(get_db)):
+    """
+    Per-sector breakdown for the Sector Strength card UI.
+
+    Shows:
+    - sector_score: the SECTOR INDEX technical score (RSI/MACD/EMA/RS
+      of the actual Nifty sector index) from sector_score_cache.
+      This is the "how strong is this sector right now" signal.
+    - verdict_counts: count of Strong Buy/Buy/Watchlist/Avoid within
+      the sector, for the stacked bar chart.
+    - best/worst stock by overall_score.
+    - stock_count: total analysed stocks in sector.
+
+    Sorted by sector_score (index strength) descending.
+    """
+    from ..database import SectorScoreCache
+
+    latest_reports = (
+        db.query(StockAnalysisReport)
+        .filter(
+            StockAnalysisReport.is_latest == True,  # noqa: E712
+            StockAnalysisReport.category.notin_(["ETF", "MF"]),
+        )
+        .all()
+    )
+
+    # Load sector index scores from daily cache
+    cache_rows = db.query(SectorScoreCache).all()
+    sector_index_scores: dict = {row.sector_index_symbol: row.sector_strength_score for row in cache_rows}
+
+    # Pull sector_index_symbol per sector from stock_mstr
+    from ..database import StockMstr
+    sector_to_index: dict = {}
+    index_rows = (
+        db.query(StockMstr.sector, StockMstr.sector_index_symbol)
+        .filter(StockMstr.sector != None, StockMstr.sector_index_symbol != None)  # noqa: E711
+        .distinct()
+        .all()
+    )
+    for row in index_rows:
+        if row.sector not in sector_to_index:
+            sector_to_index[row.sector] = row.sector_index_symbol
+
+    by_sector: dict = defaultdict(list)
+    for r in latest_reports:
+        if r.sector and r.overall_score is not None:
+            by_sector[r.sector].append(r)
+
+    summary = []
+    for sector_name, reports in by_sector.items():
+        # Verdict breakdown for stacked bar
+        verdict_counts = {"Strong Buy": 0, "Buy": 0, "Watchlist": 0, "Avoid": 0}
+        for r in reports:
+            v = r.verdict or "Watchlist"
+            if v in verdict_counts:
+                verdict_counts[v] += 1
+
+        best  = max(reports, key=lambda r: r.overall_score or 0)
+        worst = min(reports, key=lambda r: r.overall_score or 0)
+
+        # Use real sector index score if available in daily cache
+        idx_sym        = sector_to_index.get(sector_name)
+        sector_score   = sector_index_scores.get(idx_sym) if idx_sym else None
+        # Fallback: avg stock sector_score from their latest reports
+        if sector_score is None:
+            ss_vals = [r.sector_score for r in reports if r.sector_score is not None]
+            sector_score = round(sum(ss_vals) / len(ss_vals), 1) if ss_vals else 50.0
+
+        summary.append({
+            "sector": sector_name,
+            "stock_count": len(reports),
+            "sector_score": round(sector_score, 1),
+            "verdict_counts": verdict_counts,
+            "best_stock": {
+                "symbol_code": best.symbol_code,
+                "score": round(best.overall_score, 1),
+            },
+            "worst_stock": {
+                "symbol_code": worst.symbol_code,
+                "score": round(worst.overall_score, 1),
+            },
+        })
+
+    # Sort by sector index score — strongest sector first
+    summary.sort(key=lambda x: x["sector_score"], reverse=True)
+    return {"sectors": summary}
+
+
 @router.post("/refresh-market-overview", response_model=MarketOverviewSchema)
 def refresh_market_overview(db: Session = Depends(get_db)):
     overview = orchestrator.refresh_market_overview(db)

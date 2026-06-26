@@ -20,4 +20,5 @@ export const listJobs     = (limit = 5)      => api.get("/jobs", { params: { lim
 
 // Dashboard
 export const getDashboard          = (topN = 6) => api.get("/dashboard", { params: { top_n: topN } }).then(r => r.data);
+export const getSectorSummary      = ()          => api.get("/dashboard/sector-summary").then(r => r.data);
 export const refreshMarketOverview = ()          => api.post("/dashboard/refresh-market-overview").then(r => r.data);
