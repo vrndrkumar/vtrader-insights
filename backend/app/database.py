@@ -172,6 +172,11 @@ def init_db() -> None:
             MarketOverview.__table__,
             AnalysisJob.__table__,
             SectorScoreCache.__table__,
+            PriceHistoryDaily.__table__,
+            PriceHistoryWeekly.__table__,
+            PriceHistoryMonthly.__table__,
+            NiftyHistoryWeekly.__table__,
+            StockTechnicalScore.__table__,
         ],
     )
 
@@ -182,3 +187,125 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# ── Price History Tables ──────────────────────────────────────────────────────
+
+class PriceHistoryDaily(Base):
+    """
+    Daily OHLCV for all active EQUITY stocks.
+    3 years of history (~750 rows per stock).
+    Updated by the daily price job after market close.
+    """
+    __tablename__ = "price_history_daily"
+    __table_args__ = (
+        {"mysql_engine": "InnoDB", "mysql_row_format": "COMPRESSED"},
+    )
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol_code = Column(String(20), nullable=False, index=True)
+    date        = Column(TIMESTAMP, nullable=False, index=True)
+    open        = Column(Float)
+    high        = Column(Float)
+    low         = Column(Float)
+    close       = Column(Float, nullable=False)
+    volume      = Column(BigInteger)
+
+
+class PriceHistoryWeekly(Base):
+    """
+    Weekly OHLCV for all active EQUITY stocks.
+    3 years of history (~156 rows per stock).
+    Updated every Monday after market close.
+    """
+    __tablename__ = "price_history_weekly"
+    __table_args__ = (
+        {"mysql_engine": "InnoDB", "mysql_row_format": "COMPRESSED"},
+    )
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol_code = Column(String(20), nullable=False, index=True)
+    week_start  = Column(TIMESTAMP, nullable=False, index=True)
+    open        = Column(Float)
+    high        = Column(Float)
+    low         = Column(Float)
+    close       = Column(Float, nullable=False)
+    volume      = Column(BigInteger)
+
+
+class PriceHistoryMonthly(Base):
+    """
+    Monthly OHLCV for all active EQUITY stocks.
+    5 years of history (~60 rows per stock).
+    Updated on first trading day of each month.
+    """
+    __tablename__ = "price_history_monthly"
+    __table_args__ = (
+        {"mysql_engine": "InnoDB", "mysql_row_format": "COMPRESSED"},
+    )
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol_code = Column(String(20), nullable=False, index=True)
+    month_start = Column(TIMESTAMP, nullable=False, index=True)
+    open        = Column(Float)
+    high        = Column(Float)
+    low         = Column(Float)
+    close       = Column(Float, nullable=False)
+    volume      = Column(BigInteger)
+
+
+class NiftyHistoryWeekly(Base):
+    """
+    Nifty 50 weekly OHLCV — shared benchmark for RS Line calculation.
+    All stocks use this single table instead of each fetching Nifty separately.
+    """
+    __tablename__ = "nifty_history_weekly"
+
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    week_start = Column(TIMESTAMP, nullable=False, unique=True, index=True)
+    open       = Column(Float)
+    high       = Column(Float)
+    low        = Column(Float)
+    close      = Column(Float, nullable=False)
+    volume     = Column(BigInteger)
+
+
+class StockTechnicalScore(Base):
+    """
+    Stores computed technical scores per stock per analysis.
+    Includes all 5 component scores so we can later use outcomes
+    to recalibrate weights (the learning system — Point 3).
+    outcome_30d/60d/90d filled by nightly outcome job.
+    """
+    __tablename__ = "stock_technical_scores"
+
+    id              = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol_code     = Column(String(20), nullable=False, index=True)
+    analysis_date   = Column(TIMESTAMP, nullable=False, index=True)
+    price_at_analysis = Column(Float)
+
+    # 5 component scores
+    score_weekly_base    = Column(Float)  # Component 1: 0-30
+    score_breakout_pos   = Column(Float)  # Component 2: 0-25
+    score_macd_multi_tf  = Column(Float)  # Component 3: 0-25
+    score_rs_line        = Column(Float)  # Component 4: 0-10
+    score_weekly_volume  = Column(Float)  # Component 5: 0-10
+    total_technical      = Column(Float)  # 0-100
+
+    # Stage and key signals for filtering/research
+    weekly_stage        = Column(String(20))
+    base_weeks          = Column(Integer)
+    base_range_pct      = Column(Float)
+    pct_from_52w_high   = Column(Float)
+    rs_line_state       = Column(String(30))
+    monthly_macd_state  = Column(String(30))
+    weekly_macd_state   = Column(String(30))
+    disqualifiers       = Column(JSON)
+
+    # Outcomes — filled by nightly job 30/60/90 days later
+    outcome_30d  = Column(Float, nullable=True)
+    outcome_60d  = Column(Float, nullable=True)
+    outcome_90d  = Column(Float, nullable=True)
+    is_correct_30d = Column(Boolean, nullable=True)
+    is_correct_60d = Column(Boolean, nullable=True)
+    is_correct_90d = Column(Boolean, nullable=True)

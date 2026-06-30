@@ -188,9 +188,44 @@ def analyze_stock(db: Session, stock: StockMstr) -> StockAnalysisReport:
     # Step 1: fresh market data
     quote, history = _get_quote_and_history(stock)
 
-    # Step 2: technical analysis + pattern engine
+    # Step 2a: OLD technical engine — kept for trade setup levels (entry/stop/target)
     technical       = technical_module.compute_technical(history, quote)
     suggested_setup = technical_module.suggest_trade_setup(technical)
+
+    # Step 2b: NEW technical scoring v2 — weekly/monthly/daily from DB
+    try:
+        from .price_history_job import get_price_history
+        from .technical_v2 import compute_technical_score_v2
+        price_data = get_price_history(db, stock.symbol_code)
+        tech_v2 = compute_technical_score_v2(
+            daily_df        = price_data["daily"]        if price_data["has_data"] else None,
+            weekly_df       = price_data["weekly"]        if price_data["weeks_available"] >= 12 else None,
+            monthly_df      = price_data["monthly"]       if price_data["months_available"] >= 12 else None,
+            nifty_weekly_df = price_data["nifty_weekly"]  if len(price_data["nifty_weekly"]) >= 12 else None,
+        )
+        # Merge v2 score into technical dict
+        technical["technical_score"]  = tech_v2["technical_score"]
+        technical["weekly_stage"]     = tech_v2["weekly_stage"]
+        technical["base_weeks"]       = tech_v2["base_weeks"]
+        technical["base_desc"]        = tech_v2["base_desc"]
+        technical["rs_line_state"]    = tech_v2["rs_line_state"]
+        technical["macd_v2_notes"]    = tech_v2["notes"]
+        technical["disqualifiers_v2"] = tech_v2["disqualifiers"]
+        technical["cap_reversal"]     = tech_v2["cap_reversal"]
+        technical["vol_pattern"]      = tech_v2["vol_pattern"]
+        technical["tier1_score"]      = tech_v2["score_weekly_base"]
+        technical["tier2_score"]      = tech_v2["score_breakout_pos"]
+        technical["tier3_score"]      = tech_v2["score_macd_multi_tf"]
+        technical["tier4_score"]      = tech_v2["score_rs_line"] + tech_v2["score_weekly_volume"]
+        technical["pattern_score"]    = tech_v2["technical_score"]
+        technical["v2_detail"]        = tech_v2.get("detail", {})
+        _tech_v2_available = True
+    except Exception as _v2_err:
+        # Graceful fallback to old scoring if price history not yet loaded
+        import logging
+        logging.getLogger(__name__).warning(f"tech_v2 unavailable for {stock.symbol_code}: {_v2_err}")
+        tech_v2 = {}
+        _tech_v2_available = False
 
     stock_sector   = getattr(stock, "sector", None) or ""
     stock_industry = getattr(stock, "industry", None) or ""
@@ -271,6 +306,13 @@ def analyze_stock(db: Session, stock: StockMstr) -> StockAnalysisReport:
             risk_factors.append("Volume is significantly below average — low liquidity increases slippage risk on entry/exit.")
         if "Choppy" in _str or "Extended" in _str:
             risk_factors.append(f"Chart structure is '{_str}' — increased risk of false signals or whipsaws.")
+        if not risk_factors and _tech_v2_available:
+            for disq in tech_v2.get("disqualifiers", []):
+                risk_factors.append(f"Technical: {disq}")
+            if tech_v2.get("swing_highs_above", 0) >= 5:
+                risk_factors.append("Heavy overhead resistance — multiple swing highs above current price.")
+            if "declining" in tech_v2.get("rs_line_state", "").lower():
+                risk_factors.append("Stock underperforming Nifty 50 — relative strength declining.")
         if not risk_factors:
             risk_factors.append("Limited data available for this stock at this time.")
 
@@ -305,7 +347,18 @@ def analyze_stock(db: Session, stock: StockMstr) -> StockAnalysisReport:
     llm_why_not_real = [r for r in llm_why_not if GENERIC_FALLBACK not in str(r)]
 
     if not llm_why_real and not llm_why_not_real:
-        llm_why, llm_why_not = _build_swing_reasons(technical, verdict, suggested_setup)
+        if _tech_v2_available and tech_v2.get("notes"):
+            llm_why = []
+            llm_why_not = []
+            for note in tech_v2.get("notes", [])[:8]:
+                if any(w in note for w in ["+8","+10","+12","+6","rising","new high","explosion","Perfect","dry-up","triple","aligned","accumulation","Bullish"]):
+                    llm_why.append(note)
+                elif any(w in note for w in ["-15","-10","bearish","declining","resistance","⚠","Disqualifier","cap"]):
+                    llm_why_not.append(note)
+            if not llm_why and not llm_why_not:
+                llm_why, llm_why_not = _build_swing_reasons(technical, verdict, suggested_setup)
+        else:
+            llm_why, llm_why_not = _build_swing_reasons(technical, verdict, suggested_setup)
     else:
         llm_why, llm_why_not = llm_why_real, llm_why_not_real
 
